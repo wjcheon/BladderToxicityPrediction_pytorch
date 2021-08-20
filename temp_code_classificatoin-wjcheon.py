@@ -13,17 +13,18 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 
-#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2.xlsx",engine='openpyxl')
-#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance.xlsx",engine='openpyxl')
-#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
+# df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2.xlsx",engine='openpyxl') # Best performance data set
+# df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance.xlsx",engine='openpyxl')
+# df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
 df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python_norm-F.xlsx",engine='openpyxl')
 df.head()
 df.sample(frac=1)
 
-
 #X = df.iloc[:, 1:-1]
 X = df.iloc[:, 1:-1]
 y = df.iloc[:, -1]
+
+patientID = df.iloc[:, 0]
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
 indices = np.arange(np.shape(X)[0])
@@ -31,7 +32,7 @@ indices = np.arange(np.shape(X)[0])
 
 X_trainval, X_test, y_trainval, y_test, idx1, idx2 = train_test_split(X, y, indices, test_size=0.2, shuffle=True)
 
-scaler = StandardScaler()
+#scaler = StandardScaler()
 # X_train = scaler.fit_transform(X_trainval)
 # X_val = scaler.transform(X_test)
 X_train, y_train = np.array(X_trainval), np.array(y_trainval)
@@ -40,6 +41,29 @@ X_val, y_val = np.array(X_test), np.array(y_test)
 # Binary classification
 y_train[y_train>0]=1
 y_val[y_val>0]=1
+# Class balance
+def get_class_distribution(obj):
+    count_dict = {
+        "normal": 0,
+        "toxicity": 0,
+    }
+
+    for i in obj:
+        if i == 0:
+            count_dict['normal'] += 1
+        elif i == 1:
+            count_dict['toxicity'] += 1
+        else:
+            print("Check classes.")
+
+    return count_dict
+
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(16,7))
+# Train
+sns.barplot(data = pd.DataFrame.from_dict([get_class_distribution(y_train)]).melt(), x = "variable", y="value", hue="variable",  ax=axes[0]).set_title('Class Distribution in Train Set')
+# Validation
+sns.barplot(data = pd.DataFrame.from_dict([get_class_distribution(y_val)]).melt(), x = "variable", y="value", hue="variable",  ax=axes[1]).set_title('Class Distribution in Val Set')
+
 
 class ClassifierDataset(Dataset):
 
@@ -66,8 +90,15 @@ for _, t in train_dataset:
 target_list = torch.tensor(target_list)
 target_list = target_list[torch.randperm(len(target_list))]
 
+class_count = [i for i in get_class_distribution(y_train).values()]
+class_weights = 1./torch.tensor(class_count, dtype=torch.float)
+class_weights_all = class_weights[target_list]
 
-
+weighted_sampler = WeightedRandomSampler(
+    weights=class_weights_all,
+    num_samples=len(class_weights_all),
+    replacement=True
+)
 
 EPOCHS = 300
 BATCH_SIZE = 16
@@ -77,7 +108,7 @@ NUM_CLASSES = 2
 
 
 train_loader = DataLoader(dataset=train_dataset,
-                          batch_size=BATCH_SIZE)
+                          batch_size=BATCH_SIZE, sampler=weighted_sampler)
 val_loader = DataLoader(dataset=val_dataset, batch_size=1)
 
 
@@ -254,7 +285,7 @@ print(device)
 model = MulticlassClassification(num_feature = NUM_FEATURES, num_class=NUM_CLASSES)
 model.to(device)
 
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 print(model)
 
@@ -356,7 +387,6 @@ plt.figure()
 plt.plot(predSetF, 'r')
 plt.plot(gtSetF)
 plt.title('bestScore: {}'.format(bestScore))
-
 
 
 # Create dataframes

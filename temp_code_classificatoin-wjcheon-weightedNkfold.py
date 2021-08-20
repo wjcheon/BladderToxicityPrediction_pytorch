@@ -14,38 +14,25 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.model_selection import KFold
 
-#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2.xlsx",engine='openpyxl')
-df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
+df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2-1.xlsx",engine='openpyxl') # Best performance data set
+# df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance.xlsx",engine='openpyxl')
+# df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
+#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python_norm-F3.xlsx",engine='openpyxl')
 df.head()
-#df.sample(frac=1) # shuffle option turn off
+df = df.sample(frac=1, random_state=1).reset_index(drop=True)
+print(df)
 
 
-#X = df.iloc[:, 1:-1]
-X = df.iloc[:, 12:-1]
-y = df.iloc[:, -1]
-# Z-score normalization
+input_original = df.iloc[:, 1:-1]
+output_original = df.iloc[:, -1]
 scaler = StandardScaler()
-X = scaler.fit_transform(X)
-
-X_nonZero = X[214:-1]
-y_nonZero = np.array(y[214:-1])
-y_nonZero = y_nonZero.reshape((np.shape(y_nonZero)[0],1))
-df_nonZero = np.concatenate((X_nonZero, y_nonZero), axis=1)
-np.random.seed(2021)
-df_nonZero = np.take(df_nonZero,np.random.permutation(df_nonZero.shape[0]),axis=0)
-
-x_zero = X[1:214]
-y_zero = np.array(df.iloc[1:214, -1])
-x_nonZero = df_nonZero[:, 0:-1]
-y_nonZero = df_nonZero[:, -1]
-y_nonZero[y_nonZero>0]=1
-#
+input_original = scaler.fit_transform(input_original)
+#input_original = input_original.to_numpy()
 
 kFoldParameters = 5
-currentFold =  5
-# ZERO
-output_original_length_zero = y_zero.__len__()
-rn_output_original = range(0, output_original_length_zero)
+currentFold =  1
+output_original_length = output_original.__len__()
+rn_output_original = range(0, output_original_length)
 kf5 = KFold(n_splits=kFoldParameters, shuffle=False) # 5 is default
 
 training_indexes = {}
@@ -64,36 +51,40 @@ trainingIndex_CV_F = training_indexes.get(trainingDicKey_list[currentFold - 1])
 testDicKey_list = list(test_indexes.keys())
 testIndex_CV_F = test_indexes.get(testDicKey_list[currentFold - 1])
 
-X_train_zero = np.array(x_zero[trainingIndex_CV_F])
-y_train_zero = np.array(y_zero[trainingIndex_CV_F])
-X_val_zero = np.array(x_zero[testIndex_CV_F])
-y_val_zero = np.array(y_zero[testIndex_CV_F])
+X_train = np.array(input_original[trainingIndex_CV_F])
+y_train = np.array(output_original[trainingIndex_CV_F])
+X_val = np.array(input_original[testIndex_CV_F])
+y_val = np.array(output_original[testIndex_CV_F])
 
-# NON-ZERO
-output_original_length_nonZero = y_nonZero.__len__()
-rn_output_original = range(0, output_original_length_nonZero)
-kf5 = KFold(n_splits=kFoldParameters, shuffle=False) # 5 is default
+print("Data is successfully loaded !!")
+print("Train input:{}, Train gt:{}".format(np.shape(X_train), np.shape(y_train)))
+print("Test input:{}, Test gt:{}".format(np.shape(X_val), np.shape(y_val)))
 
-training_indexes = {}
-test_indexes = {}
-counter = 1
-for train_index, test_index in kf5.split(rn_output_original):
-    training_indexes["trainIndex_CV{0}".format(counter)] = train_index
-    test_indexes["testIndex_CV{0}".format(counter)] = test_index
-    counter = counter + 1
-# print("trainIndex:{}".format(train_index))
-# print("testIndex:{}".format(test_index))
+# Binary classification
+y_train[y_train>0]=1
+y_val[y_val>0]=1
+# Class balance
+def get_class_distribution(obj):
+    count_dict = {
+        "normal": 0,
+        "toxicity": 0,
+    }
 
-trainingDicKey_list = list(training_indexes.keys())
-trainingIndex_CV_F = training_indexes.get(trainingDicKey_list[currentFold - 1])
+    for i in obj:
+        if i == 0:
+            count_dict['normal'] += 1
+        elif i == 1:
+            count_dict['toxicity'] += 1
+        else:
+            print("Check classes.")
 
-testDicKey_list = list(test_indexes.keys())
-testIndex_CV_F = test_indexes.get(testDicKey_list[currentFold - 1])
+    return count_dict
 
-X_train_nonZero = np.array(x_nonZero[trainingIndex_CV_F])
-y_train_nonZero = np.array(y_nonZero[trainingIndex_CV_F])
-X_val_nonZero = np.array(x_nonZero[testIndex_CV_F])
-y_val_nonZero = np.array(y_nonZero[testIndex_CV_F])
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(16,7))
+# Train
+sns.barplot(data = pd.DataFrame.from_dict([get_class_distribution(y_train)]).melt(), x = "variable", y="value", hue="variable",  ax=axes[0]).set_title('Class Distribution in Train Set')
+# Validation
+sns.barplot(data = pd.DataFrame.from_dict([get_class_distribution(y_val)]).melt(), x = "variable", y="value", hue="variable",  ax=axes[1]).set_title('Class Distribution in Val Set')
 
 
 class ClassifierDataset(Dataset):
@@ -103,7 +94,7 @@ class ClassifierDataset(Dataset):
         self.y_data = y_data
 
     def __getitem__(self, index):
-         x_data = self.X_data[index] + (torch.rand(self.X_data[index].size()[0]) * 0.1)
+         x_data = self.X_data[index] + (torch.rand(self.X_data[index].size()[0]) * 0.2)
          return x_data, self.y_data[index]
         #return self.X_data[index], self.y_data[index]
 
@@ -111,27 +102,36 @@ class ClassifierDataset(Dataset):
         return len(self.X_data)
 
 
-train_dataset_zero = ClassifierDataset(torch.from_numpy(X_train_zero).float(), torch.from_numpy(y_train_zero).long())
-val_dataset_zero = ClassifierDataset(torch.from_numpy(X_val_zero).float(), torch.from_numpy(y_val_zero).long())
-train_dataset_nonZero = ClassifierDataset(torch.from_numpy(X_train_nonZero).float(), torch.from_numpy(y_train_nonZero).long())
-val_dataset_nonZero = ClassifierDataset(torch.from_numpy(X_val_nonZero).float(), torch.from_numpy(y_val_nonZero).long())
+train_dataset = ClassifierDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long())
+val_dataset = ClassifierDataset(torch.from_numpy(X_val).float(), torch.from_numpy(y_val).long())
+
+target_list = []
+for _, t in train_dataset:
+    target_list.append(t)
+
+target_list = torch.tensor(target_list)
+target_list = target_list[torch.randperm(len(target_list))]
+
+class_count = [i for i in get_class_distribution(y_train).values()]
+class_weights = 1./torch.tensor(class_count, dtype=torch.float)
+class_weights_all = class_weights[target_list]
+
+weighted_sampler = WeightedRandomSampler(
+    weights=class_weights_all,
+    num_samples=len(class_weights_all),
+    replacement=True
+)
 
 EPOCHS = 300
-BATCH_SIZE_zero = 8
-BATCH_SIZE_nonZero = 16
-
+BATCH_SIZE = 16
 LEARNING_RATE = 0.0001
-NUM_FEATURES = np.shape(X)[1]
+NUM_FEATURES = np.shape(input_original)[1]
 NUM_CLASSES = 2
 
-train_loader_zero = DataLoader(dataset=train_dataset_zero,
-                          batch_size=BATCH_SIZE_zero)
-val_loader_zero = DataLoader(dataset=val_dataset_zero, batch_size=1)
-train_loader_nonZero = DataLoader(dataset=train_dataset_nonZero,
-                          batch_size=BATCH_SIZE_nonZero)
-val_loader_nonZero = DataLoader(dataset=val_dataset_nonZero, batch_size=1)
 
-
+train_loader = DataLoader(dataset=train_dataset,
+                          batch_size=BATCH_SIZE, sampler=weighted_sampler)
+val_loader = DataLoader(dataset=val_dataset, batch_size=1)
 
 
 class MulticlassClassification(nn.Module):
@@ -150,11 +150,6 @@ class MulticlassClassification(nn.Module):
         # self.batchnorm1 = nn.BatchNorm1d(512)
         # self.batchnorm2 = nn.BatchNorm1d(128)
         # self.batchnorm3 = nn.BatchNorm1d(64)
-        #
-        # torch.nn.init.xavier_uniform_(self.layer_1.weight)
-        # torch.nn.init.xavier_uniform_(self.layer_2.weight)
-        # torch.nn.init.xavier_uniform_(self.layer_3.weight)
-
 
         # # model 2
         # self.biasOp = False # False option is fixed.
@@ -181,16 +176,6 @@ class MulticlassClassification(nn.Module):
         # self.batchnorm7 = nn.BatchNorm1d(128)
         # self.batchnorm8 = nn.BatchNorm1d(64)
         # self.batchnorm9 = nn.BatchNorm1d(32)
-        #
-        # torch.nn.init.xavier_normal_(self.layer_1.weight)
-        # torch.nn.init.xavier_normal_(self.layer_2.weight)
-        # torch.nn.init.xavier_normal_(self.layer_3.weight)
-        # torch.nn.init.xavier_normal_(self.layer_4.weight)
-        # torch.nn.init.xavier_normal_(self.layer_5.weight)
-        # torch.nn.init.xavier_normal_(self.layer_6.weight)
-        # torch.nn.init.xavier_normal_(self.layer_7.weight)
-        # torch.nn.init.xavier_normal_(self.layer_8.weight)
-        # torch.nn.init.xavier_normal_(self.layer_9.weight)
 
         #model 3
         self.biasOp = False
@@ -210,13 +195,12 @@ class MulticlassClassification(nn.Module):
         self.batchnorm4 = nn.BatchNorm1d(72)
         self.batchnorm5 = nn.BatchNorm1d(36)
 
-        # kaiming_uniform_
-        # xavier_normal_
-        torch.nn.init.xavier_uniform_(self.layer_1.weight)
-        torch.nn.init.xavier_uniform_(self.layer_2.weight)
-        torch.nn.init.xavier_uniform_(self.layer_3.weight)
-        torch.nn.init.xavier_uniform_(self.layer_4.weight)
-        torch.nn.init.xavier_uniform_(self.layer_5.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_1.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_2.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_3.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_4.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_5.weight)
+
 
     def forward(self, x):
         # # model 1
@@ -283,7 +267,7 @@ class MulticlassClassification(nn.Module):
         #
         # x = self.layer_out(x)
 
-        # model 3
+        # model 1
         x = self.layer_1(x)
         x = self.batchnorm1(x)
         x = self.LeakyReLU(x)
@@ -323,10 +307,8 @@ print(device)
 model = MulticlassClassification(num_feature = NUM_FEATURES, num_class=NUM_CLASSES)
 model.to(device)
 
-criterion = nn.CrossEntropyLoss()
+criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-#optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
-#optimizer = optim.RMSprop(model.parameters(), lr=LEARNING_RATE)
 print(model)
 
 
@@ -352,7 +334,9 @@ loss_stats = {
 }
 
 
-
+predSetF =[]
+gtSetF = []
+bestScore  =0
 
 print("Begin training.")
 for e in tqdm(range(1, EPOCHS + 1)):
@@ -361,15 +345,8 @@ for e in tqdm(range(1, EPOCHS + 1)):
     train_epoch_acc = 0
     model.train()
     train_len_counter = 0
-    for i, data in enumerate(zip(train_loader_zero, train_loader_nonZero)):
-
-        X_train_batch_zero = data[0][0].to(device)
-        y_train_batch_zero = data[0][1].to(device)
-        X_train_batch_nonZero = data[1][0].to(device)
-        y_train_batch_nonZero = data[1][1].to(device)
-        X_train_batch = torch.cat((X_train_batch_zero, X_train_batch_nonZero))
-        y_train_batch = torch.cat((y_train_batch_zero, y_train_batch_nonZero))
-
+    for X_train_batch, y_train_batch in train_loader:
+        X_train_batch, y_train_batch = X_train_batch.to(device), y_train_batch.to(device)
         optimizer.zero_grad()
 
         y_train_pred = model(X_train_batch)
@@ -392,15 +369,8 @@ for e in tqdm(range(1, EPOCHS + 1)):
             gtSet = []
             val_len_coutner = 0
             model.eval()
-            for i, data in enumerate(zip(val_loader_zero, val_loader_nonZero)):
-                X_val_batch_zero = data[0][0].to(device)
-                y_val_batch_zero = data[0][1].to(device)
-                X_val_batch_nonZero = data[1][0].to(device)
-                y_val_batch_nonZero = data[1][1].to(device)
-                X_val_batch = torch.cat((X_val_batch_zero, X_val_batch_nonZero))
-                y_val_batch = torch.cat((y_val_batch_zero, y_val_batch_nonZero))
-
-                #X_val_batch, y_val_batch = X_val_batch.to(device), y_val_batch.to(device)
+            for X_val_batch, y_val_batch in val_loader:
+                X_val_batch, y_val_batch = X_val_batch.to(device), y_val_batch.to(device)
 
                 y_val_pred = model(X_val_batch)
 
@@ -416,24 +386,29 @@ for e in tqdm(range(1, EPOCHS + 1)):
                 _, y_pred_tags = torch.max(y_pred_softmax, dim=1)
                 y_val_pred_np = y_pred_tags.cpu().detach().numpy()
                 y_val_batch_np = y_val_batch.cpu().detach().numpy()
-                predSet.extend(y_val_pred_np)
-                gtSet.extend(y_val_batch_np)
+                predSet.append(y_val_pred_np)
+                gtSet.append(y_val_batch_np)
 
-
-    # len_train = len(train_loader_zero) + len(train_loader_nonZero)
-    # len_val = len(val_loader_zero) + len(val_loader_nonZero)
+    loss_stats['train'].append(train_epoch_loss / len(train_loader))
+    loss_stats['val'].append(val_epoch_loss / len(val_loader))
+    accuracy_stats['train'].append(train_epoch_acc / len(train_loader))
+    accuracy_stats['val'].append(val_epoch_acc / len(val_loader))
     len_train = train_len_counter
     len_val = val_len_coutner
-    loss_stats['train'].append(train_epoch_loss / len_train)
-    loss_stats['val'].append(val_epoch_loss / len_val)
-    accuracy_stats['train'].append(train_epoch_acc / len_train)
-    accuracy_stats['val'].append(val_epoch_acc / len_val)
+    currentScore = val_epoch_acc / len_val
+    # print(bestScore)
+    if bestScore <= currentScore:
+        bestScore = currentScore
+        predSetF = predSet
+        gtSetF = gtSet
+        print('Best score is updated !! ')
 
-    print(f'Epoch {e + 0:03}: | Train Loss: {train_epoch_loss / len_train:.5f} | Val Loss: {val_epoch_loss / len_val:.5f} | Train Acc: {train_epoch_acc / len_train:.3f}| Val Acc: {val_epoch_acc / len_val:.3f}')
+    print(f'Epoch {e + 0:03}: | Train Loss: {train_epoch_loss / len(train_loader):.5f} | Val Loss: {val_epoch_loss / len(val_loader):.5f} | Train Acc: {train_epoch_acc / len(train_loader):.3f}| Val Acc: {val_epoch_acc / len(val_loader):.3f}')
 
 plt.figure()
-plt.plot(predSet, 'r')
-plt.plot(gtSet)
+plt.plot(predSetF, 'r')
+plt.plot(gtSetF)
+plt.title('bestScore: {}'.format(bestScore))
 
 
 # Create dataframes
@@ -444,3 +419,9 @@ fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20,7))
 sns.lineplot(data=train_val_acc_df, x = "epochs", y="value", hue="variable",  ax=axes[0]).set_title('Train-Val Accuracy/Epoch')
 sns.lineplot(data=train_val_loss_df, x = "epochs", y="value", hue="variable", ax=axes[1]).set_title('Train-Val Loss/Epoch')
 plt.show()
+
+
+
+
+
+
