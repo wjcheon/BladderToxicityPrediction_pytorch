@@ -13,8 +13,10 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix, classification_report
 
-df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2.xlsx",engine='openpyxl')
+#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2.xlsx",engine='openpyxl')
+#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance.xlsx",engine='openpyxl')
 #df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
+df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python_norm-F.xlsx",engine='openpyxl')
 df.head()
 df.sample(frac=1)
 
@@ -24,8 +26,10 @@ X = df.iloc[:, 1:-1]
 y = df.iloc[:, -1]
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
+indices = np.arange(np.shape(X)[0])
+#X_trainval, X_test, y_trainval, y_test = train_test_split(X, y, test_size=0.2, random_state=69, shuffle=True)
 
-X_trainval, X_test, y_trainval, y_test = train_test_split(X, y, test_size=0.2, random_state=69)
+X_trainval, X_test, y_trainval, y_test, idx1, idx2 = train_test_split(X, y, indices, test_size=0.2, shuffle=True)
 
 scaler = StandardScaler()
 # X_train = scaler.fit_transform(X_trainval)
@@ -44,7 +48,7 @@ class ClassifierDataset(Dataset):
         self.y_data = y_data
 
     def __getitem__(self, index):
-         x_data = self.X_data[index] + (torch.rand(self.X_data[index].size()[0]) * 0.1)
+         x_data = self.X_data[index] + (torch.rand(self.X_data[index].size()[0]) * 0.2)
          return x_data, self.y_data[index]
         #return self.X_data[index], self.y_data[index]
 
@@ -137,6 +141,13 @@ class MulticlassClassification(nn.Module):
         self.batchnorm3 = nn.BatchNorm1d(144)
         self.batchnorm4 = nn.BatchNorm1d(72)
         self.batchnorm5 = nn.BatchNorm1d(36)
+
+        # torch.nn.init.xavier_uniform_(self.layer_1.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_2.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_3.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_4.weight)
+        # torch.nn.init.xavier_uniform_(self.layer_5.weight)
+
 
     def forward(self, x):
         # # model 1
@@ -270,7 +281,9 @@ loss_stats = {
 }
 
 
-
+predSetF =[]
+gtSetF = []
+bestScore  =0
 
 print("Begin training.")
 for e in tqdm(range(1, EPOCHS + 1)):
@@ -278,6 +291,7 @@ for e in tqdm(range(1, EPOCHS + 1)):
     train_epoch_loss = 0
     train_epoch_acc = 0
     model.train()
+    train_len_counter = 0
     for X_train_batch, y_train_batch in train_loader:
         X_train_batch, y_train_batch = X_train_batch.to(device), y_train_batch.to(device)
         optimizer.zero_grad()
@@ -292,6 +306,7 @@ for e in tqdm(range(1, EPOCHS + 1)):
 
         train_epoch_loss += train_loss.item()
         train_epoch_acc += train_acc.item()
+        train_len_counter += 1
 
 # VALIDATION
         with torch.no_grad():
@@ -299,7 +314,7 @@ for e in tqdm(range(1, EPOCHS + 1)):
             val_epoch_acc = 0
             predSet = []
             gtSet = []
-
+            val_len_coutner = 0
             model.eval()
             for X_val_batch, y_val_batch in val_loader:
                 X_val_batch, y_val_batch = X_val_batch.to(device), y_val_batch.to(device)
@@ -311,6 +326,7 @@ for e in tqdm(range(1, EPOCHS + 1)):
 
                 val_epoch_loss += val_loss.item()
                 val_epoch_acc += val_acc.item()
+                val_len_coutner += 1
 
                 # save the predicted and gt value
                 y_pred_softmax = torch.log_softmax(y_val_pred, dim=1)
@@ -324,12 +340,23 @@ for e in tqdm(range(1, EPOCHS + 1)):
     loss_stats['val'].append(val_epoch_loss / len(val_loader))
     accuracy_stats['train'].append(train_epoch_acc / len(train_loader))
     accuracy_stats['val'].append(val_epoch_acc / len(val_loader))
+    len_train = train_len_counter
+    len_val = val_len_coutner
+    currentScore = val_epoch_acc / len_val
+    # print(bestScore)
+    if bestScore <= currentScore:
+        bestScore = currentScore
+        predSetF = predSet
+        gtSetF = gtSet
+        print('Best score is updated !! ')
 
     print(f'Epoch {e + 0:03}: | Train Loss: {train_epoch_loss / len(train_loader):.5f} | Val Loss: {val_epoch_loss / len(val_loader):.5f} | Train Acc: {train_epoch_acc / len(train_loader):.3f}| Val Acc: {val_epoch_acc / len(val_loader):.3f}')
 
 plt.figure()
-plt.plot(predSet, 'r')
-plt.plot(gtSet)
+plt.plot(predSetF, 'r')
+plt.plot(gtSetF)
+plt.title('bestScore: {}'.format(bestScore))
+
 
 
 # Create dataframes

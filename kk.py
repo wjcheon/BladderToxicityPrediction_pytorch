@@ -5,52 +5,49 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import torch
-torch.manual_seed(77777)
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.model_selection import KFold
 
-#df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
 #df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-balance-2.xlsx",engine='openpyxl')
-df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python_norm-F.xlsx",engine='openpyxl')
+df = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python.xlsx",engine='openpyxl')
 df.head()
 #df.sample(frac=1) # shuffle option turn off
 
-#X = df.iloc[:, 1:-1]  # For all data
-X = df.iloc[:, 1:-1]  # EBRT dose, GTV 100, Bladder point (ICRU), BD0.1cc, BD1cc, BD2cc, BD5cc
-y = df.iloc[:, -1]     # Late toxicity
 
-# # Data preparation with (1) Z-score normalization, (2) K-fold cross validation
-# (1) Z-score normalization
-#scaler = StandardScaler()
-#X = scaler.fit_transform(X)
+#X = df.iloc[:, 1:-1]
+X = df.iloc[:, 12:-1]
+y = df.iloc[:, -1]
+# Z-score normalization
+scaler = StandardScaler()
+X = scaler.fit_transform(X)
 
-barrierIndex = 214 # 29, 214
-X_nonZero = X[barrierIndex:-1]
-y_nonZero = np.array(y[barrierIndex:-1])
+X_nonZero = X[214:-1]
+y_nonZero = np.array(y[214:-1])
 y_nonZero = y_nonZero.reshape((np.shape(y_nonZero)[0],1))
 df_nonZero = np.concatenate((X_nonZero, y_nonZero), axis=1)
 np.random.seed(2021)
 df_nonZero = np.take(df_nonZero,np.random.permutation(df_nonZero.shape[0]),axis=0)
 
-#x_zero = X[1:barrierIndex]
-x_zero = np.array(df.iloc[1:barrierIndex, 1:-1])
-y_zero = np.array(df.iloc[1:barrierIndex, -1])
+x_zero = X[1:214]
+y_zero = np.array(df.iloc[1:214, -1])
 x_nonZero = df_nonZero[:, 0:-1]
 y_nonZero = df_nonZero[:, -1]
 y_nonZero[y_nonZero>0]=1
 #
-# (2) K-fold cross validation
-kFoldParameters = 5
-currentFold =  2
 
+kFoldParameters = 5
+currentFold =  5
 # ZERO
 output_original_length_zero = y_zero.__len__()
 rn_output_original = range(0, output_original_length_zero)
 kf5 = KFold(n_splits=kFoldParameters, shuffle=False) # 5 is default
+
 training_indexes = {}
 test_indexes = {}
 counter = 1
@@ -106,7 +103,7 @@ class ClassifierDataset(Dataset):
         self.y_data = y_data
 
     def __getitem__(self, index):
-         x_data = self.X_data[index] + (torch.rand(self.X_data[index].size()[0]) * 0.2)
+         x_data = self.X_data[index] + (torch.rand(self.X_data[index].size()[0]) * 0.1)
          return x_data, self.y_data[index]
         #return self.X_data[index], self.y_data[index]
 
@@ -120,8 +117,9 @@ train_dataset_nonZero = ClassifierDataset(torch.from_numpy(X_train_nonZero).floa
 val_dataset_nonZero = ClassifierDataset(torch.from_numpy(X_val_nonZero).float(), torch.from_numpy(y_val_nonZero).long())
 
 EPOCHS = 300
-BATCH_SIZE_zero = 3
-BATCH_SIZE_nonZero = 10
+BATCH_SIZE_zero = 8
+BATCH_SIZE_nonZero = 16
+
 LEARNING_RATE = 0.0001
 NUM_FEATURES = np.shape(X)[1]
 NUM_CLASSES = 2
@@ -214,11 +212,11 @@ class MulticlassClassification(nn.Module):
 
         # kaiming_uniform_
         # xavier_normal_
-        # torch.nn.init.xavier_uniform_(self.layer_1.weight)
-        # torch.nn.init.xavier_uniform_(self.layer_2.weight)
-        # torch.nn.init.xavier_uniform_(self.layer_3.weight)
-        # torch.nn.init.xavier_uniform_(self.layer_4.weight)
-        # torch.nn.init.xavier_uniform_(self.layer_5.weight)
+        torch.nn.init.xavier_uniform_(self.layer_1.weight)
+        torch.nn.init.xavier_uniform_(self.layer_2.weight)
+        torch.nn.init.xavier_uniform_(self.layer_3.weight)
+        torch.nn.init.xavier_uniform_(self.layer_4.weight)
+        torch.nn.init.xavier_uniform_(self.layer_5.weight)
 
     def forward(self, x):
         # # model 1
@@ -320,11 +318,15 @@ class MulticlassClassification(nn.Module):
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
 
+
+
 model = MulticlassClassification(num_feature = NUM_FEATURES, num_class=NUM_CLASSES)
 model.to(device)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+#optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
+#optimizer = optim.RMSprop(model.parameters(), lr=LEARNING_RATE)
 print(model)
 
 
@@ -353,9 +355,6 @@ loss_stats = {
 
 
 print("Begin training.")
-bestScore = 0
-predSetF =[]
-gtSetF =[]
 for e in tqdm(range(1, EPOCHS + 1)):
     # TRAINING
     train_epoch_loss = 0
@@ -370,10 +369,6 @@ for e in tqdm(range(1, EPOCHS + 1)):
         y_train_batch_nonZero = data[1][1].to(device)
         X_train_batch = torch.cat((X_train_batch_zero, X_train_batch_nonZero))
         y_train_batch = torch.cat((y_train_batch_zero, y_train_batch_nonZero))
-
-        idx = torch.randperm(X_train_batch.size()[0])
-        X_train_batch = X_train_batch[idx].view(X_train_batch.size())
-        y_train_batch = y_train_batch[idx].view(y_train_batch.size())
 
         optimizer.zero_grad()
 
@@ -405,7 +400,8 @@ for e in tqdm(range(1, EPOCHS + 1)):
                 X_val_batch = torch.cat((X_val_batch_zero, X_val_batch_nonZero))
                 y_val_batch = torch.cat((y_val_batch_zero, y_val_batch_nonZero))
 
-                X_val_batch, y_val_batch = X_val_batch.to(device), y_val_batch.to(device)
+                #X_val_batch, y_val_batch = X_val_batch.to(device), y_val_batch.to(device)
+
                 y_val_pred = model(X_val_batch)
 
                 val_loss = criterion(y_val_pred, y_val_batch)
@@ -433,21 +429,12 @@ for e in tqdm(range(1, EPOCHS + 1)):
     accuracy_stats['train'].append(train_epoch_acc / len_train)
     accuracy_stats['val'].append(val_epoch_acc / len_val)
 
-    # Catch the best performance data: Early stop
-    currentScore = val_epoch_acc / len_val
-    #print(bestScore)
-    if bestScore <= currentScore:
-        bestScore = currentScore
-        predSetF = predSet
-        gtSetF = gtSet
-        print('Best score is updated !! ')
-
     print(f'Epoch {e + 0:03}: | Train Loss: {train_epoch_loss / len_train:.5f} | Val Loss: {val_epoch_loss / len_val:.5f} | Train Acc: {train_epoch_acc / len_train:.3f}| Val Acc: {val_epoch_acc / len_val:.3f}')
 
 plt.figure()
-plt.plot(predSetF, 'r')
-plt.plot(gtSetF)
-plt.title('bestScore: {}'.format(bestScore))
+plt.plot(predSet, 'r')
+plt.plot(gtSet)
+
 
 # Create dataframes
 train_val_acc_df = pd.DataFrame.from_dict(accuracy_stats).reset_index().melt(id_vars=['index']).rename(columns={"index":"epochs"})
@@ -457,9 +444,3 @@ fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(20,7))
 sns.lineplot(data=train_val_acc_df, x = "epochs", y="value", hue="variable",  ax=axes[0]).set_title('Train-Val Accuracy/Epoch')
 sns.lineplot(data=train_val_loss_df, x = "epochs", y="value", hue="variable", ax=axes[1]).set_title('Train-Val Loss/Epoch')
 plt.show()
-
-
-
-
-
-
