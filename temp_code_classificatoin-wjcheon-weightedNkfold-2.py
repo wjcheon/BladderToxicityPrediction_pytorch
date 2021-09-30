@@ -418,6 +418,7 @@ for iter1 in range(1, 6):
 
         print(f'Fold {iter1} | Epoch {e + 0:03}: | Train Loss: {train_epoch_loss / len(train_loader):.5f} | Val Loss: {val_epoch_loss / len(val_loader):.5f} | Train Acc: {train_epoch_acc / len(train_loader):.3f}| Val Acc: {val_epoch_acc / len(val_loader):.3f}')
 
+    # Visualization off for Auto Training during the five folds
     # plt.figure()
     # plt.plot(predSetF, 'r')
     # plt.plot(gtSetF)
