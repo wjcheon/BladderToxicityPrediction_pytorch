@@ -226,7 +226,7 @@ y_proba
 ##
 from sklearn.inspection import permutation_importance
 
-pi_T = permutation_importance(model, X_train, y_train, n_repeats=1000, random_state=0)
+pi_T = permutation_importance(model, X_train, y_train, n_repeats=10, random_state=0)
 
 # 시각화
 fig =  plt.figure()
@@ -238,10 +238,10 @@ font_title = {
     'fontweight': 'bold'
 }
 people = ('Pathology', 'FIGO stage', 'Pelvic LN', 'Para-aortic LN', 'TNM category', 'SCL', 'Tumor size', 'CCRT', 'concurrent chemotherapy regimen',
-          'Number of concurrent chemotherapy cycle', 'Adjuvant chemotherapy', 'EBRT total dose',  'EQD2(3) (Gy)', 	'GTV D100 (cGy)',	'BPICRU EQD2(3) (Gy)',
-          'BD0.1cc EQD2(3) (Gy)', 'BD1cc EQD2(3) (Gy)' ,'BD2cc EQD2(3) (Gy)', 'BD5cc EQD2(3) (Gy)')
+          'Number of concurrent chemotherapy cycle', 'Adjuvant chemotherapy', 'EBRT total dose EQD2(3) (Gy)', 	'GTV D100 (cGy)',	'BPICRU EQD2(3) (Gy)',
+          'BD0.1cc EQD2(3) (Gy)', 'BD1cc EQD2(3) (Gy)' ,'BD2cc EQD2(3) (Gy)', 'BD5cc EQD2(3) (Gy)', 'Age')
 
-y_pos = np.arange(19)
+y_pos = np.arange(len(people))
 ax.barh(y_pos, pi_T.importances_mean, xerr=pi_T.importances_std, color="orange")
 ax.set_yticks(y_pos)
 ax.set_yticklabels(people)

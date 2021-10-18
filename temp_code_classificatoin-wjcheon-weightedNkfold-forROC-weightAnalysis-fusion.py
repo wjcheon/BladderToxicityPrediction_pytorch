@@ -42,6 +42,20 @@ patientID = df.iloc[:, 0]
 patientID = patientID.to_numpy()
 #input_original = input_original.to_numpy()
 
+
+## Load Extra-validation data
+df_extra = pd.read_excel(r"C:\Users\admin\Dropbox\Research\개인연구\23_Brachy_BladderTocixity\GU toxicity_DB_python-282-age-extraValidationSet.xlsx",engine='openpyxl') # Best performance data set
+df_extra.head()
+df_extra = df_extra.sample(frac=1, random_state=1).reset_index(drop=True) # shffle and index reset
+print(df)
+
+input_extra = df_extra.iloc[:, 1:-1]
+output_extra = df_extra.iloc[:, -1]
+input_extra = scaler.transform(input_extra)
+patientID_extra = df_extra.iloc[:, 0]
+patientID_extra = patientID_extra.to_numpy()
+
+
 def binary_acc(y_pred, y_test):
     y_pred_tag = torch.round(torch.sigmoid(y_pred))
 
@@ -82,8 +96,13 @@ for iter10 in range(0, 500):
         y_train = np.array(output_original[trainingIndex_CV_F])
         X_val = np.array(input_original[testIndex_CV_F])
         y_val = np.array(output_original[testIndex_CV_F])
+        x_extra = np.array(input_extra)
+        y_extra = np.array(output_extra)
+
         patientID_val = np.array(patientID[testIndex_CV_F])
+        patientID_extra = np.array(patientID_extra)
         y_val_original = copy.deepcopy(y_val)
+        y_extra_original = np.array(y_extra)
 
         print("Data is successfully loaded !!")
         print("Train input:{}, Train gt:{}".format(np.shape(X_train), np.shape(y_train)))
@@ -109,11 +128,15 @@ for iter10 in range(0, 500):
 
             return count_dict
 
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(16,7))
+        fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(24,7))
         # Train
         sns.barplot(data = pd.DataFrame.from_dict([get_class_distribution(y_train)]).melt(), x = "variable", y="value", hue="variable",  ax=axes[0]).set_title('Class Distribution in Train Set')
         # Validation
         sns.barplot(data = pd.DataFrame.from_dict([get_class_distribution(y_val)]).melt(), x = "variable", y="value", hue="variable",  ax=axes[1]).set_title('Class Distribution in Val Set')
+        # Extra
+        sns.barplot(data=pd.DataFrame.from_dict([get_class_distribution(y_extra)]).melt(), x="variable", y="value",
+                    hue="variable", ax=axes[1]).set_title('Class Distribution in Val Set')
+
 
 
         class ClassifierDataset(Dataset):
@@ -133,6 +156,7 @@ for iter10 in range(0, 500):
 
         train_dataset = ClassifierDataset(torch.from_numpy(X_train).float(), torch.from_numpy(y_train).long())
         val_dataset = ClassifierDataset(torch.from_numpy(X_val).float(), torch.from_numpy(y_val).long())
+        extra_dataset = ClassifierDataset(torch.from_numpy(x_extra).float(), torch.from_numpy(y_extra).long())
 
         target_list = []
         for _, t in train_dataset:
@@ -161,6 +185,7 @@ for iter10 in range(0, 500):
         train_loader = DataLoader(dataset=train_dataset,
                                   batch_size=BATCH_SIZE, sampler=weighted_sampler)
         val_loader = DataLoader(dataset=val_dataset, batch_size=1)
+        extra_loader = DataLoader(dataset=extra_dataset, batch_size=1)
 
 
         class MulticlassClassification(nn.Module):
@@ -361,17 +386,24 @@ for iter10 in range(0, 500):
 
         accuracy_stats = {
             'train': [],
-            "val": []
+            "val": [],
+            "extra": []
         }
         loss_stats = {
             'train': [],
-            "val": []
+            "val": [],
+            "extra": []
         }
 
-
+        # Validation
         predSetF =[]
         gtSetF = []
         preSoftmaxSetF= []
+
+        # ExtraValidation
+        predSetF_extra = []
+        gtSetF_extra = []
+        preSoftmaxSetF_extra = []
 
         bestScore  =0
 
@@ -440,24 +472,71 @@ for iter10 in range(0, 500):
                         gtSet.append(y_val_batch_np)
                         preSoftmaxSet.append(y_pred_softmax_np)
 
+                    # EXTRA VALIDATION
+                    extra_epoch_loss = 0
+                    extra_epoch_acc = 0
+                    predSet_extra = []
+                    gtSet_extra = []
+                    preSoftmaxSet_extra = []
+                    extra_len_coutner = 0
+                    for X_extra_batch, y_extra_batch in extra_loader:
+                        X_extra_batch, y_extra_batch = X_extra_batch.to(device), y_extra_batch.to(device)
+
+                        y_extra_pred = model(X_extra_batch)
+
+                        extra_loss = criterion(y_extra_pred.squeeze(), y_extra_batch.squeeze().float())
+                        # Accuracy
+                        extra_acc = np.average(
+                            np.equal(y_extra_pred.reshape(-1).detach().cpu().numpy().round(), y_extra_batch.cpu()))
+                        # val_acc = multi_acc(y_val_pred, y_val_batch)
+
+                        extra_epoch_loss += extra_loss.item()
+                        extra_epoch_acc += extra_acc.item()
+                        extra_len_coutner += 1
+
+                        # save the predicted and gt value
+                        y_pred_softmax_extra = torch.log_softmax(y_extra_pred, dim=1)
+                        _, y_pred_tags_extra = torch.max(y_pred_softmax_extra, dim=1)
+                        y_extra_pred_np = y_pred_tags_extra.cpu().detach().numpy()
+                        y_extra_batch_np = y_extra_batch.cpu().detach().numpy()
+                        # 210915: wjcheon
+                        y_pred_softmax_np_extra = y_extra_pred.cpu().detach().numpy()
+
+                        predSet_extra.append(y_extra_pred_np)
+                        gtSet_extra.append(y_extra_batch_np)
+                        preSoftmaxSet_extra.append(y_pred_softmax_np_extra)
+
             loss_stats['train'].append(train_epoch_loss / len(train_loader))
             loss_stats['val'].append(val_epoch_loss / len(val_loader))
+            loss_stats['extra'].append(extra_epoch_loss / len(extra_loader))
             accuracy_stats['train'].append(train_epoch_acc / len(train_loader))
             accuracy_stats['val'].append(val_epoch_acc / len(val_loader))
+            accuracy_stats['extra'].append(extra_epoch_acc / len(extra_loader))
+
+
             len_train = train_len_counter
             len_val = val_len_coutner
-            currentScore = val_epoch_acc / len_val
+            len_extra = extra_len_coutner
+            currentScore1 = val_epoch_acc / len_val
+            currentScore2 = extra_epoch_acc / len_extra
+            currentScore = currentScore1+currentScore2
             # print(bestScore)
             if e < 20:
                 continue
             else:
                 if bestScore <= currentScore:
                     bestScore = currentScore
+                    # Validation
                     predSetF = predSet
                     gtSetF = gtSet
                     preSoftmaxSetF= preSoftmaxSet
-                    modelPath = os.path.join(r"D:\BladderToxicityResult_balanced_148_age_auroc_model2".format(iter1), currentDT.strftime("%Y-%m-%d-%H-%M-%S-fold{}-model.pt".format(iter1)))
-                    torch.save(model.state_dict(), modelPath)
+                    # ExtraValidation
+                    predSetF_extra = predSet_extra
+                    gtSetF_extra =gtSet_extra
+                    preSoftmaxSetF_extra = preSoftmaxSet_extra
+
+                    #modelPath = os.path.join(r"D:\BladderToxicityResult_balanced_148_age_auroc_model-fusion".format(iter1), currentDT.strftime("%Y-%m-%d-%H-%M-%S-fold{}-model.pt".format(iter1)))
+                    #torch.save(model.state_dict(), modelPath)
                     print('Best score is updated !! ')
 
             print(f'Fold {iter1} | Epoch {e + 0:03}: | Train Loss: {train_epoch_loss / len(train_loader):.5f} | Val Loss: {val_epoch_loss / len(val_loader):.5f} |'
@@ -490,7 +569,8 @@ for iter10 in range(0, 500):
         patientID_val = list(patientID_val)
         for i in range(len(predSet)):
             ws_write.cell(row=i+1, column=1).value = patientID_val[i]
-            ws_write.cell(row=i+1, column=2).value = predSetF[i][0]
+            #ws_write.cell(row=i+1, column=2).value = predSetF[i][0]
+            ws_write.cell(row=i + 1, column=2).value = int(preSoftmaxSetF_list[i][0][0] > 0.5)
             ws_write.cell(row=i+1, column=3).value = gtSetF[i][0]
             ws_write.cell(row=i+1, column=4).value = y_val_original[i]
             ws_write.cell(row=i + 1, column=5).value = preSoftmaxSetF_list[i][0][0]
@@ -499,7 +579,22 @@ for iter10 in range(0, 500):
             #ws_write.append([predSet[i][0]])
             #ws_write.append([gtSet[i][1]])
 
-    saveFileName = os.path.join(r"D:\BladderToxicityResult_balanced_148_age_auroc_model2", currentDT.strftime("%Y-%m-%d-%H-%M-%S-Results.xlsx"))
+        ws_write_extra = wb.create_sheet(title="extraValidation")
+        predSetF_extra = list(predSetF_extra)
+        gtSetF_extra = list(gtSetF_extra)
+        preSoftmaxSetF_list_extra = list(preSoftmaxSetF_extra)
+        y_extra_original = list(y_extra_original)
+        patientID_extra = list(patientID_extra)
+        for i in range(len(predSet_extra)):
+            ws_write_extra.cell(row=i + 1, column=1).value = patientID_extra[i]
+            # ws_write.cell(row=i+1, column=2).value = int(predSetF[i][0]>0.5)
+            ws_write_extra.cell(row=i + 1, column=2).value = int(preSoftmaxSetF_list_extra[i][0][0] > 0.5)
+            ws_write_extra.cell(row=i + 1, column=3).value = gtSetF_extra[i][0]
+            ws_write_extra.cell(row=i + 1, column=4).value = y_extra_original[i]
+            ws_write_extra.cell(row=i + 1, column=5).value = preSoftmaxSetF_list_extra[i][0][0]
+        #            ws_write.cell(row=i + 1, column=6).value = preSoftmaxSetF_list[i][0][1]
+
+    saveFileName = os.path.join(r"D:\BladderToxicityResult_balanced_148_age_auroc_model-fusion", currentDT.strftime("%Y-%m-%d-%H-%M-%S-Results.xlsx"))
     # saveFileName = os.path.join(r"ResultsReports", currentDT.strftime("%Y-%m-%d-%H-%M-%S-Results.xlsx"))
     wb.save(filename=saveFileName)
 
